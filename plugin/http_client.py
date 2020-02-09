@@ -33,10 +33,13 @@ def is_comment(s):
 
 
 def do_request(block, buf):
-    variables = dict((m.groups() for m in (GLOBAL_VAR_REGEX.match(l) for l in buf) if m))
-    variables.update(dict((m.groups() for m in (VAR_REGEX.match(l) for l in block) if m)))
+    variables = dict((m.groups() for m in (GLOBAL_VAR_REGEX.match(l)
+                                           for l in buf) if m))
+    variables.update(dict((m.groups() for m in (VAR_REGEX.match(l)
+                                                for l in block) if m)))
 
-    block = [line for line in block if not is_comment(line) and line.strip() != '']
+    block = [line
+             for line in block if not is_comment(line) and line.strip() != '']
 
     if len(block) == 0:
         print('Request was empty.')
@@ -61,27 +64,36 @@ def do_request(block, buf):
         else:
             break
 
-    data = [ replace_vars(l, variables) for l in block ]
+    data = [replace_vars(l, variables) for l in block]
     files = None
-    if all([ '=' in l for l in data ]):
-      # Form data: separate entries into data dict, and files dict
-      key_value_pairs = dict([ l.split('=', 1) for l in data ])
-      def to_file(expr):
-        type, arg = FILE_REGEX.match(expr).groups()
-        arg = arg.replace('\\(', '(').replace('\\)', ')')
-        return open(arg, 'rb') if type == 'file' else (arg)
+    if all(['=' in l for l in data]):
+        # Form data: separate entries into data dict, and files dict
+        key_value_pairs = dict([l.split('=', 1) for l in data])
 
-      files = dict([(k, to_file(v)) for (k, v) in key_value_pairs.items() if FILE_REGEX.match(v)])
-      data = dict([(k, v) for (k, v) in key_value_pairs.items() if not FILE_REGEX.match(v)])
+        def to_file(expr):
+            type, arg = FILE_REGEX.match(expr).groups()
+            arg = arg.replace('\\(', '(').replace('\\)', ')')
+            return open(arg, 'rb') if type == 'file' else (arg)
+
+        files = dict([(k, to_file(v))
+                      for (k, v) in key_value_pairs.items()
+                      if FILE_REGEX.match(v)])
+        data = dict([(k, v)
+                     for (k, v) in key_value_pairs.items()
+                     if not FILE_REGEX.match(v)])
     else:
-      # Straight data: just send it off as a string.
-      data = '\n'.join(data)
+        # Straight data: just send it off as a string.
+        data = '\n'.join(data)
 
     if not verify_ssl:
         from requests.packages.urllib3.exceptions import InsecureRequestWarning
         requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
-    response = requests.request(method, url, verify=verify_ssl, headers=headers, data=data, files=files)
+    try:
+        response = requests.request(method, url, verify=verify_ssl,
+                                    headers=headers, data=data, files=files)
+    except requests.ConnectionError as e:
+        return [str(error.reason).split('>:')[1] for error in e.args], ''
     content_type = response.headers.get('Content-Type', '').split(';')[0]
 
     response_body = response.text
@@ -91,7 +103,7 @@ def do_request(block, buf):
             response_body = json.dumps(
                 json.loads(response.text), sort_keys=True, indent=2,
                 separators=(',', ': '),
-                ensure_ascii=vim.eval('g:http_client_json_escape_utf')=='1')
+                ensure_ascii=vim.eval('g:http_client_json_escape_utf') == '1')
         except ValueError:
             pass
 
@@ -113,12 +125,13 @@ def vim_filetypes_by_content_type():
         'text/html': 'html'
     }
 
+
 BUFFER_NAME = '__HTTP_Client_Response__'
 
 
 def find_block(buf, line_num):
     length = len(buf)
-    is_buffer_terminator = lambda s: s.strip() == ''
+    def is_buffer_terminator(s): return s.strip() == ''
 
     block_start = line_num
     while block_start > 0 and not is_buffer_terminator(buf[block_start]):
@@ -131,7 +144,7 @@ def find_block(buf, line_num):
     return buf[block_start:block_end + 1]
 
 
-def open_scratch_buffer(contents, filetype):
+def open_scratch_buffer(contents, filetype, window_num):
     previous_window = vim.current.window
     existing_buffer_window_id = vim.eval('bufwinnr("%s")' % BUFFER_NAME)
     if existing_buffer_window_id == '-1':
@@ -139,6 +152,7 @@ def open_scratch_buffer(contents, filetype):
             split_cmd = 'vsplit'
         else:
             split_cmd = 'split'
+        vim.current.window = window_num
         vim.command('rightbelow %s %s' % (split_cmd, BUFFER_NAME))
         vim.command('setlocal buftype=nofile nospell')
     else:
@@ -151,6 +165,13 @@ def open_scratch_buffer(contents, filetype):
         vim.current.window = previous_window
 
 
+def do_async(func):
+    def wrapper():
+        vim.async_call(func)
+    return wrapper
+
+
+@do_async
 def do_request_from_buffer():
     win = vim.current.window
     line_num = win.cursor[0] - 1
@@ -159,7 +180,7 @@ def do_request_from_buffer():
     if result:
         response, content_type = result
         vim_ft = vim_filetypes_by_content_type().get(content_type, 'text')
-        open_scratch_buffer(response, vim_ft)
+        open_scratch_buffer(response, vim_ft, win)
 
 
 def write_buffer(contents, buffer):
@@ -173,11 +194,14 @@ def write_buffer(contents, buffer):
 
 # Tests.
 
+
 def run_tests():
     import json
 
     def extract_json(resp):
-        return json.loads(''.join([ l for l in resp[0] if not l.startswith('//') ]))
+        return json.loads(''.join([l
+                                   for l in resp[0]
+                                   if not l.startswith('//')]))
 
     def test(assertion, test):
         print('Test %s: %s' % ('passed' if assertion else 'failed', test))
@@ -191,19 +215,22 @@ def run_tests():
         'X-Hey: :a',
         '# comment'
     ], []))
-    test(resp['headers']['X-Hey'] == 'barf', 'Headers are passed with variable substitution.')
+    test(resp['headers']['X-Hey'] == 'barf',
+         'Headers are passed with variable substitution.')
 
     resp = extract_json(do_request([
         '# :a = barf',
         'GET http://httpbin.org/get?data=:a'
     ], []))
-    test(resp['args']['data'] == 'barf', 'GET data is passed with variable substitution.')
+    test(resp['args']['data'] == 'barf',
+         'GET data is passed with variable substitution.')
 
     resp = extract_json(do_request([
         'POST http://httpbin.org/post',
         'some data'
     ], []))
-    test(resp['data'] == 'some data', 'POST data is passed with variable substitution.')
+    test(resp['data'] == 'some data',
+         'POST data is passed with variable substitution.')
 
     resp = extract_json(do_request([
         'POST http://httpbin.org/post',
@@ -216,7 +243,7 @@ def run_tests():
         'POST http://$global/post',
         'forma=a',
         'formb=b',
-    ], [ '# $global = httpbin.org']))
+    ], ['# $global = httpbin.org']))
     test(resp['form']['forma'] == 'a', 'Global variables are substituted.')
 
     import os
@@ -224,7 +251,7 @@ def run_tests():
 
     SAMPLE_FILE_CONTENT = 'sample file content'
 
-    temp_file = NamedTemporaryFile(delete = False)
+    temp_file = NamedTemporaryFile(delete=False)
     temp_file.write(SAMPLE_FILE_CONTENT)
     temp_file.close()
     resp = extract_json(do_request([
@@ -233,8 +260,10 @@ def run_tests():
         'formb=b',
         "formc=!file(%s)" % temp_file.name,
     ], []))
-    test(resp['files']['formc'] == SAMPLE_FILE_CONTENT, 'Files given as path are sent properly.')
-    test(not 'formc' in resp['form'], 'File not included in form data.')
+    test(resp['files']['formc'] == SAMPLE_FILE_CONTENT,
+         'Files given as path are sent properly.')
+    test('formc' not in resp['form'],
+         'File not included in form data.')
     os.unlink(temp_file.name)
 
     resp = extract_json(do_request([
@@ -243,13 +272,15 @@ def run_tests():
         'formb=b',
         "formc=!content(%s)" % SAMPLE_FILE_CONTENT,
     ], []))
-    test(resp['files']['formc'] == SAMPLE_FILE_CONTENT, 'Files given as content are sent properly.')
+    test(resp['files']['formc'] == SAMPLE_FILE_CONTENT,
+         'Files given as content are sent properly.')
 
     resp = extract_json(do_request([
         'POST http://httpbin.org/post',
         "c=!content(foo \\(bar\\))",
     ], []))
-    test(resp['files']['c'] == 'foo (bar)', 'Escaped parenthesis should be unescaped during request')
+    test(resp['files']['c'] == 'foo (bar)',
+         'Escaped parenthesis should be unescaped during request')
 
 
 if from_cmdline:
