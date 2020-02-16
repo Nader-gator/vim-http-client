@@ -146,13 +146,13 @@ def find_block(buf, line_num):
 
 def open_scratch_buffer(contents, filetype, window_num):
     previous_window = vim.current.window
+    vim.current.window = window_num
     existing_buffer_window_id = vim.eval('bufwinnr("%s")' % BUFFER_NAME)
     if existing_buffer_window_id == '-1':
         if vim.eval('g:http_client_result_vsplit') == '1':
             split_cmd = 'vsplit'
         else:
             split_cmd = 'split'
-        vim.current.window = window_num
         vim.command('rightbelow %s %s' % (split_cmd, BUFFER_NAME))
         vim.command('setlocal buftype=nofile nospell')
     else:
